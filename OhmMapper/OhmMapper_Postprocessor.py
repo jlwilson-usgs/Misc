@@ -11,16 +11,15 @@ from tkFileDialog import asksaveasfilename
 from tkFileDialog import askdirectory
 from tkinter import messagebox
 import os
-
+import math
 
 #%%
 #Executing the tkinter prompt the location of the resistivity data
 
 root = Tk() # we don't want a full GUI, so keep the root window from appearing
-root.lift()
+root.withdraw()
 messagebox.showinfo("Directions for processing of Ohm Mapper Data", "For this script to work, all csv and xyz files that you want to be processed must be included in a single folder.")
 folder = askdirectory(title="Select folder that contains all resistivity files for processing...") # show an "Open" dialog box and return the path to the selected file
-Tk().withdraw
 
 #%%
 #Defining the function to insert blank rows within the geospatial csv file
@@ -35,6 +34,7 @@ def pir(df):
 import glob
 q=0
 for filename in glob.glob('{}/*.csv'.format(folder)):
+    print("Line " + str(q+1) + " -->> " + filename)
     csv = pd.read_csv(filename,skiprows=18)
 
     csv1=pir(csv)
@@ -56,6 +56,19 @@ for filename in glob.glob('{}/*.csv'.format(folder)):
     csv1.dropna(inplace=True)
     csv1.sort_values('distace',inplace=True)
     xyz2=pd.merge_asof(xyz, csv1, left_on='X', right_on='distace', direction='nearest')
+
+    # Create a distance channel
+    xyz2["Xutm_prev"] = xyz2["Xutm"].shift(-1)
+    xyz2["Yutm_prev"] = xyz2["Yutm"].shift(-1)
+    xyz2["DISTANCE"] = xyz2.apply(lambda row: math.sqrt((row["Xutm"] - row["Xutm_prev"]) ** 2 + (row["Yutm"] - row["Yutm_prev"]) ** 2), axis=1)
+    xyz2["DISTANCE"].fillna(0, inplace=True)  # Prevents removal of last entry
+
+    # Remove entries where distance is greater than 10m
+    remove_idx = xyz2.loc[xyz2["DISTANCE"] > 10, "X"].unique()
+    xyz2 = xyz2[~xyz2["X"].isin(remove_idx)]
+    xyz2.reset_index(drop=True, inplace=True)
+
+    # Additional processing
     xyz2.sort_values('Depth', inplace=True)
     depths = xyz2['Depth'].unique()
     xyz2['X_error_abs']=np.abs(xyz2['X']-xyz2['distace'])
